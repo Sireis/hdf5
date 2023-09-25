@@ -34,8 +34,8 @@
 /* Local Macros */
 /****************/
 
-#define STAGING 1
-#if STAGING == 1
+//#define STAGING 1
+#ifdef STAGING
 #define STAGING_CHUNK_SIZE 1024
 #endif
 
@@ -63,7 +63,7 @@ static herr_t H5D__write_api_common(size_t count, hid_t dset_id[], hid_t mem_typ
 static herr_t H5D__set_extent_api_common(hid_t dset_id, const hsize_t size[], void **token_ptr,
                                          H5VL_object_t **_vol_obj_ptr);
 
-#if STAGING == 1
+#ifdef STAGING
 void staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
 void staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
 void staging_get_chunked_dimensions(hid_t dataspace, hsize_t* start, hsize_t* end, hsize_t* size);
@@ -92,7 +92,7 @@ H5FL_BLK_EXTERN(type_conv);
 /* Local Variables */
 /*******************/
 
-#if STAGING == 1
+#ifdef STAGING
 void** staging_chunk_table = NULL;
 hsize_t staging_sizes[10] = { 0 };
 #endif
@@ -425,7 +425,7 @@ H5Dopen2(hid_t loc_id, const char *name, hid_t dapl_id)
     hid_t dataset = ret_value;
     hid_t dataspace;
 done:
-#if STAGING == 1
+#ifdef STAGING
     dataspace = H5Dget_space(dataset);
     int rank = H5Sget_simple_extent_ndims(dataspace);
 
@@ -1098,7 +1098,7 @@ H5Dread(hid_t dset_id, hid_t mem_type_id, hid_t mem_space_id, hid_t file_space_i
 {
     herr_t ret_value = SUCCEED; /* Return value */
 
-#if STAGING == 1
+#ifdef STAGING
     FUNC_ENTER_API(FAIL)
     H5TRACE6("e", "iiiiix", dset_id, mem_type_id, mem_space_id, file_space_id, dxpl_id, buf);
 
@@ -1108,8 +1108,12 @@ H5Dread(hid_t dset_id, hid_t mem_type_id, hid_t mem_space_id, hid_t file_space_i
 
     if (rank == 2)
     {
-        //staging_read_into_cache_memory_optimized(dset_id, file_space_id, dxpl_id, mem_type_id);
+#ifdef STAGING_MEMORY_OPTIMIZED
+        staging_read_into_cache_memory_optimized(dset_id, file_space_id, dxpl_id, mem_type_id);
+#endif
+#ifdef STAGING_DISK_OPTIMIZED
         staging_read_into_cache_disk_optimized(dset_id, mem_space_id, file_space_id, dxpl_id, mem_type_id);
+#endif
 
         staging_read_from_cache(buf, typeSize, file_space_id, mem_space_id);
     }
@@ -2611,7 +2615,7 @@ done:
     FUNC_LEAVE_API(ret_value)
 } /* end H5Dchunk_iter() */
 
-#if STAGING == 1
+#ifdef STAGING
 void staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
 {                    
     hid_t datatype = H5Dget_type(dset_id);

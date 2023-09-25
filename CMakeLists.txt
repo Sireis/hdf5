@@ -1,6 +1,19 @@
 cmake_minimum_required (VERSION 3.18)
 project (HDF5 C)
 
+if (STAGING)
+  add_definitions(-DSTAGING=${STAGING})
+  message(STATUS "Staging=${STAGING}")
+else ()
+  message(STATUS "Staging is DISABLED")
+endif()
+
+if (STAGING_MEMORY_OPTIMIZED)
+  add_definitions(-DSTAGING_MEMORY_OPTIMIZED=${STAGING_MEMORY_OPTIMIZED})
+elseif (STAGING_DISK_OPTIMIZED)
+  add_definitions(-DSTAGING_DISK_OPTIMIZED=${STAGING_DISK_OPTIMIZED})
+endif()
+
 if (POLICY CMP0074)
   # find_package() uses <PackageName>_ROOT variables.
   cmake_policy (SET CMP0074 NEW)
