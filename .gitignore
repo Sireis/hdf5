@@ -1,5 +1,7 @@
 # .gitignore file for HDF5
 
+/.vscode
+
 # Makefile.in files
 **/Makefile.in
 
