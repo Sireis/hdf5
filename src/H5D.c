@@ -2773,17 +2773,10 @@ void staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id
     source_end[0] = source_start[0] + source_count[0];
     source_end[1] = source_start[1] + source_count[1];
 
-    hsize_t source_chunked_start[2];
-    source_chunked_start[0] = (source_start[0] / STAGING_CHUNK_SIZE);
-    source_chunked_start[1] = (source_start[1] / STAGING_CHUNK_SIZE);
-    
+    hsize_t source_chunked_start[2];    
     hsize_t source_chunked_end[2];
-    source_chunked_end[0] = staging_ceiled_division(source_end[0], STAGING_CHUNK_SIZE);
-    source_chunked_end[1] = staging_ceiled_division(source_end[1], STAGING_CHUNK_SIZE);
-
     hsize_t source_chunked_size[2];
-    source_chunked_size[0] = source_chunked_end[0] - source_chunked_start[0];
-    source_chunked_size[1] = source_chunked_end[1] - source_chunked_start[1];
+    staging_get_chunked_dimensions(file_space_id, source_chunked_start, source_chunked_end, source_chunked_size);
 
     hsize_t source_array_size[2];
     source_array_size[0] = STAGING_CHUNK_SIZE;
@@ -2799,16 +2792,9 @@ void staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id
     target_end[1] = target_start[1] + target_count[1];
 
     hsize_t target_chunked_start[2];
-    target_chunked_start[0] = (target_start[0] / STAGING_CHUNK_SIZE);
-    target_chunked_start[1] = (target_start[1] / STAGING_CHUNK_SIZE);
-    
     hsize_t target_chunked_end[2];
-    target_chunked_end[0] = staging_ceiled_division(target_end[0], STAGING_CHUNK_SIZE);
-    target_chunked_end[1] = staging_ceiled_division(target_end[1], STAGING_CHUNK_SIZE);
-
     hsize_t target_chunked_size[2];
-    target_chunked_size[0] = target_chunked_end[0] - target_chunked_start[0];
-    target_chunked_size[1] = target_chunked_end[1] - target_chunked_start[1];
+    staging_get_chunked_dimensions(file_space_id, target_chunked_start, target_chunked_end, target_chunked_size);
 
     hsize_t target_array_size[2];
     hsize_t target_array_maxsize[2];
