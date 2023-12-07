@@ -2631,9 +2631,9 @@ void staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id
     hsize_t chunked_size[2];
     staging_get_chunked_dimensions(file_space_id, chunked_start, chunked_end, chunked_size);
 
-    for (size_t j = chunked_start[1]; j < chunked_size[1]; ++j)
+    for (size_t j = chunked_start[1]; j < chunked_end[1]; ++j)
     {
-        for (size_t i = chunked_start[0]; i < chunked_size[0]; ++i)
+        for (size_t i = chunked_start[0]; i < chunked_end[0]; ++i)
         {
             void* staged_data = staging_get_memory(i, j);
             if (staged_data == NULL)
@@ -2670,9 +2670,9 @@ void staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, h
     hsize_t chunked_size[2];
     staging_get_chunked_dimensions(file_space, chunked_start, chunked_end, chunked_size);
 
-    for (size_t j = chunked_start[1]; j < chunked_size[1]; ++j)
+    for (size_t j = chunked_start[1]; j < chunked_end[1]; ++j)
     {
-        for (size_t i = chunked_start[0]; i < chunked_size[0]; ++i)
+        for (size_t i = chunked_start[0]; i < chunked_end[0]; ++i)
         {
             void* staged_data = staging_get_memory(i, j);
             if (staged_data != NULL)
@@ -2689,9 +2689,9 @@ void staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, h
     hsize_t source_array_size[] = {chunked_size[0] * STAGING_CHUNK_SIZE, chunked_size[1] * STAGING_CHUNK_SIZE};
     hsize_t target_array_size[] = {STAGING_CHUNK_SIZE, STAGING_CHUNK_SIZE};
 
-    for (size_t j = chunked_start[1]; j < chunked_size[1]; ++j)
+    for (size_t j = chunked_start[1]; j < chunked_end[1]; ++j)
     {
-        for (size_t i = chunked_start[0]; i < chunked_size[0]; ++i)
+        for (size_t i = chunked_start[0]; i < chunked_end[0]; ++i)
         {
             void* staged_data = staging_get_memory(i, j);
             if (staged_data == NULL)
@@ -2703,7 +2703,7 @@ void staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, h
                     void* source = intermediate_buffer + staging_get_linear_address(source_coordinates, source_array_size, 2, typeSize);
                     hsize_t target_coordinates[] = {0, k};
                     void* target = staged_data + staging_get_linear_address(target_coordinates, target_array_size, 2, typeSize);
-                    memcpy(target, source, STAGING_CHUNK_SIZE);
+                    memcpy(target, source, STAGING_CHUNK_SIZE * typeSize);
                 }                
             }
         }
@@ -2748,14 +2748,18 @@ hsize_t staging_ceiled_division(hsize_t dividend, hsize_t divisor)
 void* staging_allocate_memory(hsize_t x0, hsize_t x1, uint8_t typeSize)
 {
     hsize_t index = x0 + staging_sizes[0] * x1;
-    staging_chunk_table[index] = malloc(STAGING_CHUNK_SIZE * STAGING_CHUNK_SIZE * typeSize);
-    return staging_chunk_table[index];
+    staging_chunk_table[index] = malloc(STAGING_CHUNK_SIZE * STAGING_CHUNK_SIZE * typeSize);    
+    void* chunk = staging_chunk_table[index];
+    //printf("Allocated memory (%d, %d): %p\n", x0, x1, chunk);
+    return chunk;
 }
 
 void* staging_get_memory(hsize_t x0, hsize_t x1)
 {
     hsize_t index = x0 + staging_sizes[0] * x1;
-    return staging_chunk_table[index];
+    void* chunk = staging_chunk_table[index];
+    //printf("Accessed memory (%d, %d): %p\n", x0, x1, chunk);
+    return chunk;
 }
 
 void staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id)
@@ -2810,9 +2814,9 @@ void staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id
     hsize_t target_array_maxsize[2];
     H5Sget_simple_extent_dims(mem_space_id, target_array_size, target_array_maxsize);
 
-    for (size_t j = source_chunked_start[1]; j < source_chunked_size[1]; ++j)
+    for (size_t j = source_chunked_start[1]; j < source_chunked_end[1]; ++j)
     {
-        for (size_t i = source_chunked_start[0]; i < source_chunked_size[0]; ++i)
+        for (size_t i = source_chunked_start[0]; i < source_chunked_end[0]; ++i)
         {
             hsize_t start_row = 0;
             hsize_t end_row = STAGING_CHUNK_SIZE;
