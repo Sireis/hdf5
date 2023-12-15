@@ -37,8 +37,6 @@
 //#define STAGING 1
 #ifdef STAGING
 #include <stdlib.h>
-static int staging_chunk_size = 0;
-#define STAGING_CHUNK_SIZE 1024
 #endif
 
 /******************/
@@ -70,9 +68,10 @@ void staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id
 void staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
 void staging_get_chunked_dimensions(hid_t dataspace, hsize_t* start, hsize_t* end, hsize_t* size);
 static hsize_t staging_get_linear_address(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank, uint8_t typeSize);
+static hsize_t staging_get_linear_index(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank);
 static hsize_t staging_ceiled_division(hsize_t dividend, hsize_t divisor);
 static void* staging_allocate_memory(hsize_t x0, hsize_t x1, uint8_t typeSize);
-static void* staging_get_memory(hsize_t x0, hsize_t x1);
+static void* staging_get_memory(hsize_t* coordinates, hsize_t rank);
 static void staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id);
 #endif
 
@@ -95,8 +94,11 @@ H5FL_BLK_EXTERN(type_conv);
 /*******************/
 
 #ifdef STAGING
-void** staging_chunk_table = NULL;
-hsize_t staging_sizes[10] = { 0 };
+static void** staging_chunk_table = NULL;
+static hsize_t staging_sizes[10] = { 0 };
+static hsize_t staging_rank = 0;
+static int staging_chunk_size = 1024;
+static hsize_t staging_cache_limit = 4ULL*1024*1024*1024;
 #endif
 
 /*-------------------------------------------------------------------------
@@ -429,15 +431,21 @@ H5Dopen2(hid_t loc_id, const char *name, hid_t dapl_id)
 done:
 #ifdef STAGING
     dataspace = H5Dget_space(dataset);
-    int rank = H5Sget_simple_extent_ndims(dataspace);
+    staging_rank = H5Sget_simple_extent_ndims(dataspace);
 
     char* chunk_size = getenv("STAGING_CHUNK_SIZE");
     if (chunk_size != NULL)
     {
         staging_chunk_size = atoi(chunk_size);
     }    
+    
+    char* cache_limit = getenv("STAGING_CACHE_LIMIT");
+    if (cache_limit != NULL)
+    {
+        staging_chache_limit = atoi(chache_limit);
+    }    
 
-    if (rank == 2)
+    if (staging_rank == 2)
     {
         hsize_t sizes[2];
         H5Sget_simple_extent_dims(dataspace, sizes, NULL);  
@@ -1110,11 +1118,10 @@ H5Dread(hid_t dset_id, hid_t mem_type_id, hid_t mem_space_id, hid_t file_space_i
     FUNC_ENTER_API(FAIL)
     H5TRACE6("e", "iiiiix", dset_id, mem_type_id, mem_space_id, file_space_id, dxpl_id, buf);
 
-    int rank = H5Sget_simple_extent_ndims(file_space_id);
     hid_t datatype = H5Dget_type(dset_id);
     size_t typeSize = H5Tget_size(datatype);
 
-    if (rank == 2)
+    if (staging_rank == 2)
     {
 #ifdef STAGING_MEMORY_OPTIMIZED
         staging_read_into_cache_memory_optimized(dset_id, file_space_id, dxpl_id, mem_type_id);
@@ -2643,10 +2650,11 @@ void staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id
     {
         for (size_t i = chunked_start[0]; i < chunked_end[0]; ++i)
         {
-            void* staged_data = staging_get_memory(i, j);
+            hsize_t coordinates[] = {i, j};
+            void* staged_data = staging_get_memory(coordinates, staging_rank);
             if (staged_data == NULL)
             {
-                staged_data = staging_allocate_memory(i, j, typeSize);
+                staged_data = staging_allocate_memory(coordinates, staging_rank, typeSize);
                 hsize_t offset[] = { j*staging_chunk_size, i*staging_chunk_size };
                 hid_t file_space = H5Scopy(file_space_id);
                 H5Sselect_hyperslab(file_space, H5S_SELECT_SET, offset, NULL, mem_space_size, NULL);
@@ -2682,7 +2690,8 @@ void staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, h
     {
         for (size_t i = chunked_start[0]; i < chunked_end[0]; ++i)
         {
-            void* staged_data = staging_get_memory(i, j);
+            hsize_t coordinates[] = {i, j};
+            void* staged_data = staging_get_memory(coordinates, staging_rank);
             if (staged_data != NULL)
             {
                 hsize_t offset[] = {j * staging_chunk_size, i * staging_chunk_size};
@@ -2701,10 +2710,11 @@ void staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, h
     {
         for (size_t i = chunked_start[0]; i < chunked_end[0]; ++i)
         {
-            void* staged_data = staging_get_memory(i, j);
+            hsize_t coordinates[] = {i, j};
+            void* staged_data = staging_get_memory(coordinates, staging_rank);
             if (staged_data == NULL)
             {
-                staged_data = staging_allocate_memory(i, j, typeSize);
+                staged_data = staging_allocate_memory(coordinates, staging_rank, typeSize);
                 for (size_t k = 0; k < staging_chunk_size; k++)
                 {
                     hsize_t source_coordinates[] =  {i*staging_chunk_size, j*staging_chunk_size + k};
@@ -2753,18 +2763,18 @@ hsize_t staging_ceiled_division(hsize_t dividend, hsize_t divisor)
     }
 }
 
-void* staging_allocate_memory(hsize_t x0, hsize_t x1, uint8_t typeSize)
+void* staging_allocate_memory(hsize_t* coordinates, hsize_t rank, uint8_t typeSize)
 {
-    hsize_t index = x0 + staging_sizes[0] * x1;
+    hsize_t index = staging_get_linear_index(coordinates, staging_sizes, rank);
     staging_chunk_table[index] = malloc(staging_chunk_size * staging_chunk_size * typeSize);    
     void* chunk = staging_chunk_table[index];
     //printf("Allocated memory (%d, %d): %p\n", x0, x1, chunk);
     return chunk;
 }
 
-void* staging_get_memory(hsize_t x0, hsize_t x1)
+void* staging_get_memory(hsize_t* coordinates, hsize_t rank)
 {
-    hsize_t index = x0 + staging_sizes[0] * x1;
+    hsize_t index = staging_get_linear_index(coordinates, staging_sizes, rank);
     void* chunk = staging_chunk_table[index];
     //printf("Accessed memory (%d, %d): %p\n", x0, x1, chunk);
     return chunk;
@@ -2840,8 +2850,9 @@ void staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id
 
             for (size_t k = start_row; k < end_row; ++k)
             {
+                hsize_t chunk_index[] = {i, j};
                 hsize_t source_coordinates[] = {position_in_row, k};
-                void* source = staging_get_memory(i, j) + staging_get_linear_address(source_coordinates, source_array_size, 2, typeSize);
+                void* source = staging_get_memory(chunk_index, staging_rank) + staging_get_linear_address(source_coordinates, source_array_size, 2, typeSize);
 
                 hsize_t target_coordinates[] = {i*staging_chunk_size, j*staging_chunk_size + k};
                 void* target = buffer + staging_get_linear_address(target_coordinates, target_array_size, 2, typeSize);
@@ -2855,6 +2866,11 @@ void staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id
 
 hsize_t staging_get_linear_address(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank, uint8_t typeSize)
 {
+    return staging_get_linear_index(coordinates, array_dimensions, rank) * typeSize;
+}
+
+hsize_t staging_get_linear_index(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank)
+{
     hsize_t address = 0;
     hsize_t multiplier = 1;
     for (uint i = 0; i < rank; ++i)
@@ -2863,6 +2879,6 @@ hsize_t staging_get_linear_address(hsize_t* coordinates, hsize_t* array_dimensio
         multiplier *= array_dimensions[i];
     }
 
-    return address*typeSize;
+    return address;
 }
 #endif
