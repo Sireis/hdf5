@@ -37,6 +37,7 @@
 //#define STAGING 1
 #ifdef STAGING
 #include <stdlib.h>
+#include <string.h>
 #include <arrayQueue.h>
 #endif
 
@@ -95,6 +96,8 @@ H5FL_BLK_EXTERN(type_conv);
 /*******************/
 
 #ifdef STAGING
+typedef enum {LRU, FIFO} eviction_strategy_t;
+
 static void** staging_chunk_table = NULL;
 static ArrayQueue staging_chunks;
 static hsize_t staging_sizes[10] = { 0 };
@@ -102,6 +105,7 @@ static hsize_t staging_rank = 0;
 static int staging_chunk_size = 1024;
 static hsize_t staging_current_occupation = 0;
 static hsize_t staging_cache_limit = 4ULL*1024*1024*1024;
+static eviction_strategy_t staging_eviction_strategy = LRU;
 #endif
 
 /*-------------------------------------------------------------------------
@@ -447,6 +451,20 @@ done:
     {
         staging_cache_limit = atoi(cache_limit);
     }    
+
+    char* eviction_strategy = getenv("STAGING_EVICTION_STRATEGY");
+    if (eviction_strategy != NULL)
+    {
+        if (strncmp(eviction_strategy, "LRU", 3) == 0)
+        {            
+            staging_eviction_strategy = LRU;
+        }
+        
+        if (strncmp(eviction_strategy, "FIFO", 4) == 0)
+        {            
+            staging_eviction_strategy = FIFO;
+        }        
+    }
 
     if (staging_rank == 2)
     {
@@ -2793,8 +2811,13 @@ void* staging_allocate_memory(hsize_t* coordinates, hsize_t* array_dimensions, h
 void* staging_get_memory(hsize_t* coordinates, hsize_t rank)
 {
     hsize_t index = staging_get_linear_index(coordinates, staging_sizes, rank);
-    Node* node = arrayQueue_get_by_index(&staging_chunks, index);    
-    arrayQueue_move_to_front(&staging_chunks, node);
+    Node* node = arrayQueue_get_by_index(&staging_chunks, index);  
+
+    if (staging_eviction_strategy == LRU)
+    {        
+        arrayQueue_move_to_front(&staging_chunks, node);
+    }
+      
     return node->memory;
 }
 
