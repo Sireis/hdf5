@@ -56,6 +56,11 @@ void arrayQueue_move_to_front(ArrayQueue* queue, Node* node)
     node->previous = NULL;
     node->next = formerHead;
 
+    if (formerHead != NULL)
+    {        
+        formerHead->previous = node;
+    }    
+
     if (formerPrevious != NULL)
     {
         formerPrevious->next = formerNext;
