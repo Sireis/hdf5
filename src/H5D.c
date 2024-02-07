@@ -3001,12 +3001,12 @@ void staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t f
     for (size_t i = start_line; i < end_line; ++i )
     {
         hsize_t source_array_size[] = { file_space_size[0] };
-        hsize_t source_index[] = { start_line };
+        hsize_t source_index[] = { i };
         hsize_t source_coordinates[] = { start_column };
         void* source = staging_get_memory(source_index, 1) + staging_get_linear_address(source_coordinates, source_array_size, 1, typeSize);
         
-        hsize_t target_coordinates[] = {0, i};
-        void* target = buffer + staging_get_linear_address(target_array_start, target_array_size, 2, typeSize);
+        hsize_t target_coordinates[] = {target_array_start[0], target_array_start[1] + i};
+        void* target = buffer + staging_get_linear_address(target_coordinates, target_array_size, 2, typeSize);
 
         memcpy(target, source, target_array_size[0] * typeSize);
     }
