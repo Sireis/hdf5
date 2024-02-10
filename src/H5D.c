@@ -486,7 +486,7 @@ done:
     {
         hsize_t sizes[2];
         H5Sget_simple_extent_dims(dataspace, sizes, NULL);  
-        if (cache_shape == SQUARE)
+        if (staging_cache_shape == SQUARE)
         {
             staging_sizes[0] = staging_ceiled_division(sizes[0], staging_chunk_size);
             staging_sizes[1] = staging_ceiled_division(sizes[1], staging_chunk_size);
