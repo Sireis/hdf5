@@ -99,7 +99,6 @@ H5FL_BLK_EXTERN(type_conv);
 typedef enum {LRU, FIFO} eviction_strategy_t;
 typedef enum {SQUARE, LINE} cache_shape_t;
 
-static void** staging_chunk_table = NULL;
 static ArrayQueue staging_chunks;
 static hsize_t staging_sizes[10] = { 0 };
 static hsize_t staging_rank = 0;
@@ -496,6 +495,7 @@ done:
         {
             arrayQueue_init(&staging_chunks, sizes[0]);
         }        
+        staging_current_occupation = 0;
     }
 
 #endif
@@ -575,6 +575,10 @@ H5Dclose(hid_t dset_id)
      */
     if (H5I_dec_app_ref_always_close(dset_id) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTDEC, FAIL, "can't decrement count on dataset ID")
+
+#ifdef STAGING
+    arrayQueue_deinit(&staging_chunks);
+#endif
 
 done:
     FUNC_LEAVE_API(ret_value)
@@ -2712,6 +2716,7 @@ void staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id
                 H5Sselect_hyperslab(file_space, H5S_SELECT_SET, offset, NULL, mem_space_size, NULL);
 
                 H5D__read_api_common(1, &dset_id, &mem_type_id, &mem_space, &file_space, dxpl_id, &staged_data, NULL, NULL);   
+                //printf("-");
             }
         }
     }    
@@ -2816,7 +2821,7 @@ void staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_id, hid_
             H5Sselect_hyperslab(file_space, H5S_SELECT_SET, offset, NULL, size, NULL);
 
             H5D__read_api_common(1, &dset_id, &mem_type_id, &cache_space, &file_space, dxpl_id, &staged_data, NULL, NULL);   
-            printf("-");
+            //printf("-");
         }
     }
 }
@@ -2964,7 +2969,9 @@ void staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id
             {
                 hsize_t chunk_index[] = {i, j};
                 hsize_t source_coordinates[] = {position_in_row, k};
-                void* source = staging_get_memory(chunk_index, staging_rank) + staging_get_linear_address(source_coordinates, source_array_size, 2, typeSize);
+                void* base = staging_get_memory(chunk_index, staging_rank);
+                if (base == NULL) continue; // null if cache eviction occurred
+                void* source = base + staging_get_linear_address(source_coordinates, source_array_size, 2, typeSize);
 
                 hsize_t target_coordinates[] = {i*staging_chunk_size, j*staging_chunk_size + k};
                 void* target = buffer + staging_get_linear_address(target_coordinates, target_array_size, 2, typeSize);
@@ -3003,7 +3010,9 @@ void staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t f
         hsize_t source_array_size[] = { file_space_size[0] };
         hsize_t source_index[] = { i };
         hsize_t source_coordinates[] = { start_column };
-        void* source = staging_get_memory(source_index, 1) + staging_get_linear_address(source_coordinates, source_array_size, 1, typeSize);
+        void* base = staging_get_memory(source_index, 1);
+        if (base == NULL) continue; // null if cache eviction occurred
+        void* source = base + staging_get_linear_address(source_coordinates, source_array_size, 1, typeSize);
         
         hsize_t target_coordinates[] = {target_array_start[0], target_array_start[1] + i};
         void* target = buffer + staging_get_linear_address(target_coordinates, target_array_size, 2, typeSize);

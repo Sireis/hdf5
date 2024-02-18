@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <string.h>
 
-typedef struct Node {
+typedef struct {
     void* memory;
     struct Node* next;
     struct Node* previous;
@@ -17,6 +17,7 @@ typedef struct {
     Node* nodes;
     Node* head;
     Node* tail;
+    uint64_t capacity;
 } ArrayQueue;
 
 void arrayQueue_init(ArrayQueue* queue, uint64_t capacity) 
@@ -24,8 +25,10 @@ void arrayQueue_init(ArrayQueue* queue, uint64_t capacity)
     queue->head = NULL;
     queue->tail = NULL;
 
-    queue->nodes = (Node*) malloc(capacity*sizeof(Node));
+    queue->nodes = (Node*) malloc(capacity*sizeof(Node));    
     memset(queue->nodes, 0, capacity*sizeof(Node));
+
+    queue->capacity = capacity;
 }
 
 void arrayQueue_deinit(ArrayQueue* queue) 
@@ -33,7 +36,22 @@ void arrayQueue_deinit(ArrayQueue* queue)
     queue->head = NULL;
     queue->tail = NULL;
 
+    Node* node = queue->nodes;
+    if (node == NULL) return;
+    for (int i = 0; i < queue->capacity; i++)
+    {
+        if (node->memory != NULL)
+        {
+            free(node->memory);
+            node->memory = NULL;
+        }
+
+        node++;
+    }
+    
+
     free(queue->nodes);
+    queue->nodes = NULL;
 }
 
 Node* arrayQueue_get_by_index(ArrayQueue* queue, uint64_t i)
@@ -56,6 +74,11 @@ void arrayQueue_move_to_front(ArrayQueue* queue, Node* node)
     node->previous = NULL;
     node->next = formerHead;
 
+    if (queue->tail == NULL)
+    {
+        queue->tail = node;
+    }
+
     if (formerHead != NULL)
     {        
         formerHead->previous = node;
@@ -74,10 +97,15 @@ void arrayQueue_move_to_front(ArrayQueue* queue, Node* node)
 
 void arrayQueue_pop_tail(ArrayQueue* queue)
 {
+    if (queue->tail == NULL) return;
+
     Node* formerTail = queue->tail;
 
-    queue->tail = formerTail->previous;
-    queue->tail->next = NULL;
+    queue->tail = queue->tail->previous;
+    if (queue->tail != NULL)
+    {
+        queue->tail->next = NULL;
+    }    
 
     formerTail->memory = NULL;
     formerTail->previous = NULL;
