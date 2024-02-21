@@ -2804,7 +2804,7 @@ void staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_id, hid_
 
     
     hsize_t cache_space_offset[] = { 0, 0 };
-    hsize_t cache_space_size[] = { file_space_size[0], 1 };
+    hsize_t cache_space_size[] = { 1, file_space_size[1] };
     hid_t cache_space = H5Screate_simple(2, cache_space_size, NULL);
     H5Sselect_hyperslab(cache_space, H5S_SELECT_SET, cache_space_offset, NULL, cache_space_size, NULL);
 
@@ -2814,10 +2814,10 @@ void staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_id, hid_
         void* staged_data = staging_get_memory(coordinates, 1);
         if (staged_data == NULL)
         {
-            staged_data = staging_allocate_memory(coordinates, cache_space_size[0], 1, type_size);
+            staged_data = staging_allocate_memory(coordinates, cache_space_size[1], 1, type_size);
             hsize_t offset[] = { i, 0 };
             hid_t file_space = H5Scopy(file_space_id);
-            hsize_t size[] = {1, file_space_size[0]};
+            hsize_t size[] = {1, file_space_size[1]};
             H5Sselect_hyperslab(file_space, H5S_SELECT_SET, offset, NULL, size, NULL);
 
             H5D__read_api_common(1, &dset_id, &mem_type_id, &cache_space, &file_space, dxpl_id, &staged_data, NULL, NULL);   
