@@ -493,6 +493,7 @@ done:
         }
         else
         {
+            staging_sizes[0] = sizes[0];
             arrayQueue_init(&staging_chunks, sizes[0]);
         }        
         staging_current_occupation = 0;
@@ -2814,7 +2815,7 @@ void staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_id, hid_
         void* staged_data = staging_get_memory(coordinates, 1);
         if (staged_data == NULL)
         {
-            staged_data = staging_allocate_memory(coordinates, cache_space_size[1], 1, type_size);
+            staged_data = staging_allocate_memory(coordinates, staging_sizes, 1, type_size);
             hsize_t offset[] = { i, 0 };
             hid_t file_space = H5Scopy(file_space_id);
             hsize_t size[] = {1, file_space_size[1]};
@@ -2861,14 +2862,23 @@ hsize_t staging_ceiled_division(hsize_t dividend, hsize_t divisor)
 
 void* staging_allocate_memory(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank, uint8_t typeSize)
 {
-    hsize_t index = staging_get_linear_index(coordinates, staging_sizes, rank);
+    hsize_t index = staging_get_linear_index(coordinates, array_dimensions, rank);
     Node* node = arrayQueue_get_by_index(&staging_chunks, index);
     arrayQueue_move_to_front(&staging_chunks, node);
     void* chunk;
     
     if (staging_current_occupation < staging_cache_limit)
     {
-        hsize_t size = staging_chunk_size * staging_chunk_size * typeSize;
+        hsize_t size;
+        if (staging_cache_shape == SQUARE)
+        {
+            size = staging_chunk_size * staging_chunk_size * typeSize;
+        }
+        else
+        {
+            size = array_dimensions[0] * typeSize;
+        }
+        
         chunk = malloc(size);    
         staging_current_occupation += size;
     }
