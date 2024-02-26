@@ -2945,28 +2945,36 @@ void staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id
     hsize_t target_array_maxsize[2];
     H5Sget_simple_extent_dims(mem_space_id, target_array_size, target_array_maxsize);
 
+    hsize_t target_coordinates[] = {target_start[0], target_start[1]};;
+
     for (size_t j = source_chunked_start[1]; j < source_chunked_end[1]; ++j)
     {
-        for (size_t i = source_chunked_start[0]; i < source_chunked_end[0]; ++i)
+        target_coordinates[0] = target_start[0];
+        
+        hsize_t start_row = 0;
+        hsize_t end_row = staging_chunk_size;
+        hsize_t row_count = staging_chunk_size;
+        if (j == source_chunked_start[1])
         {
-            hsize_t start_row = 0;
-            hsize_t end_row = staging_chunk_size;
-            if (j == source_chunked_start[1])
-            {
-                start_row = source_start[1] % staging_chunk_size;
-            }
+            start_row = source_start[1] % staging_chunk_size;
+            row_count = staging_chunk_size - start_row;
+        }
 
-            if (j == source_chunked_end[1] - 1)
-            {
-                end_row = source_end[1] % staging_chunk_size;
-                end_row = (end_row != 0) ? end_row : staging_chunk_size;
-            }            
-            
+        if (j == source_chunked_end[1] - 1)
+        {
+            end_row = source_end[1] % staging_chunk_size;
+            end_row = (end_row != 0) ? end_row : staging_chunk_size;
+            row_count = end_row;
+        }    
+
+        for (size_t i = source_chunked_start[0]; i < source_chunked_end[0]; ++i)
+        {                    
             hsize_t position_in_row = 0;
             hsize_t row_size = staging_chunk_size;
             if (i == source_chunked_start[0])
             {
                 position_in_row = source_start[0] % staging_chunk_size;
+                row_size = staging_chunk_size - position_in_row;
             }
 
             if (i == source_chunked_end[0] - 1)
@@ -2981,15 +2989,19 @@ void staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id
                 hsize_t source_coordinates[] = {position_in_row, k};
                 void* base = staging_get_memory(chunk_index, staging_rank);
                 if (base == NULL) continue; // null if cache eviction occurred
-                void* source = base + staging_get_linear_address(source_coordinates, source_array_size, 2, typeSize);
-
-                hsize_t target_coordinates[] = {i*staging_chunk_size, j*staging_chunk_size + k};
-                void* target = buffer + staging_get_linear_address(target_coordinates, target_array_size, 2, typeSize);
+                void* source = base + staging_get_linear_address(source_coordinates, source_array_size, staging_rank, typeSize);
+                void* target = buffer + staging_get_linear_address(target_coordinates, target_array_size, staging_rank, typeSize);
 
                 memcpy(target, source, row_size * typeSize);
+                target_coordinates[1] += 1;
                 //printf("-");
             }
+
+            target_coordinates[0] += row_size;
+            target_coordinates[1] -= row_count;
         }
+
+        target_coordinates[1] += row_count;
     }    
 }
 
