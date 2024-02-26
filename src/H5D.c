@@ -3016,9 +3016,8 @@ void staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t f
     H5Sget_regular_hyperslab(file_space_id, file_space_start, NULL, file_space_count, NULL);
 
     hsize_t start_line = file_space_start[1];
-    hsize_t end_line = file_space_start[1] + file_space_count[1];
+    hsize_t line_count = file_space_count[1];
     hsize_t start_column = file_space_start[0];
-
 
     hsize_t target_array_start[2];
     hsize_t target_array_count[2];
@@ -3027,10 +3026,10 @@ void staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t f
     hsize_t target_array_size[2];
     H5Sget_simple_extent_dims(mem_space_id, target_array_size, NULL);
 
-    for (size_t i = start_line; i < end_line; ++i )
+    for (size_t i = 0; i < line_count; ++i )
     {
         hsize_t source_array_size[] = { file_space_size[0] };
-        hsize_t source_index[] = { i };
+        hsize_t source_index[] = { start_line + i };
         hsize_t source_coordinates[] = { start_column };
         void* base = staging_get_memory(source_index, 1);
         if (base == NULL) continue; // null if cache eviction occurred
