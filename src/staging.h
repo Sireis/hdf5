@@ -303,7 +303,7 @@ void* staging_allocate_memory(hsize_t* coordinates, hsize_t* array_dimensions, h
     return chunk;
 }
 
-void* staging_get_memory(hsize_t* coordinates, hsize_t rank)
+void* staging_get_memory(hsize_t coordinates[], hsize_t rank)
 {
     hsize_t index = staging_get_linear_index(coordinates, staging_sizes, rank);
     Node* node = arrayQueue_get_by_index(&staging_chunks, index);  
@@ -373,7 +373,7 @@ void staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id
         {
             end_row = source_end[1] % staging_chunk_size;
             end_row = (end_row != 0) ? end_row : staging_chunk_size;
-            row_count = end_row;
+            row_count = end_row - start_row;
         }    
 
         for (size_t i = source_chunked_start[0]; i < source_chunked_end[0]; ++i)
@@ -388,7 +388,7 @@ void staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id
 
             if (i == source_chunked_end[0] - 1)
             {
-                row_size = source_end[0] % staging_chunk_size;
+                row_size = (source_end[0] - position_in_row) % staging_chunk_size;
                 row_size = (row_size != 0) ? row_size : staging_chunk_size;
             }            
 
