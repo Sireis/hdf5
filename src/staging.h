@@ -296,7 +296,10 @@ void* staging_allocate_memory(hsize_t* coordinates, hsize_t* array_dimensions, h
         Node* tail = arrayQueue_get_tail(&staging_chunks);
         chunk = tail->memory;
         tail->memory = NULL;
-        arrayQueue_pop_tail(&staging_chunks);
+        if (tail != node)
+        {            
+            arrayQueue_pop_tail(&staging_chunks);
+        }        
     }
     node->memory = chunk;
 
