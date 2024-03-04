@@ -450,7 +450,7 @@ void staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t f
         hsize_t target_coordinates[] = {target_array_start[0], target_array_start[1] + i};
         void* target = buffer + staging_get_linear_address(target_coordinates, target_array_size, 2, typeSize);
 
-        memcpy(target, source, target_array_size[0] * typeSize);
+        memcpy(target, source, target_array_count[0] * typeSize);
     }
 }
 
