@@ -66,6 +66,8 @@ Node* arrayQueue_get_tail(ArrayQueue* queue)
 
 void arrayQueue_move_to_front(ArrayQueue* queue, Node* node) 
 {
+    if (queue->head == node) return;
+    
     Node* formerPrevious = node->previous;
     Node* formerNext = node->next;
     Node* formerHead = queue->head;
