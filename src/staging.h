@@ -432,9 +432,9 @@ void staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t f
     hsize_t file_space_count[2];
     H5Sget_regular_hyperslab(file_space_id, file_space_start, NULL, file_space_count, NULL);
 
-    hsize_t start_line = file_space_start[1];
-    hsize_t line_count = file_space_count[1];
-    hsize_t start_column = file_space_start[0];
+    hsize_t start_line = file_space_start[0];
+    hsize_t line_count = file_space_count[0];
+    hsize_t start_column = file_space_start[1];
 
     hsize_t target_array_start[2];
     hsize_t target_array_count[2];
@@ -445,17 +445,17 @@ void staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t f
 
     for (size_t i = 0; i < line_count; ++i )
     {
-        hsize_t source_array_size[] = { file_space_size[0] };
+        hsize_t source_array_size[] = { file_space_size[1] };
         hsize_t source_index[] = { start_line + i };
         hsize_t source_coordinates[] = { start_column };
         void* base = staging_get_memory(source_index, 1);
         if (base == NULL) continue; // null if cache eviction occurred
         void* source = base + staging_get_linear_address(source_coordinates, source_array_size, 1, typeSize);
         
-        hsize_t target_coordinates[] = {target_array_start[0], target_array_start[1] + i};
+        hsize_t target_coordinates[] = {target_array_start[0] + i, target_array_start[1]};
         void* target = buffer + staging_get_linear_address(target_coordinates, target_array_size, 2, typeSize);
 
-        memcpy(target, source, target_array_count[0] * typeSize);
+        memcpy(target, source, target_array_count[1] * typeSize);
     }
 }
 
