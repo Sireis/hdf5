@@ -158,11 +158,11 @@ void staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, h
     hsize_t chunked_size[2];
     staging_get_chunked_dimensions(file_space, chunked_start, chunked_end, chunked_size);
 
-    for (size_t j = chunked_start[1]; j < chunked_end[1]; ++j)
+    for (size_t j = chunked_start[0]; j < chunked_end[0]; ++j)
     {
-        for (size_t i = chunked_start[0]; i < chunked_end[0]; ++i)
+        for (size_t i = chunked_start[1]; i < chunked_end[1]; ++i)
         {
-            hsize_t coordinates[] = {i, j};
+            hsize_t coordinates[] = {j, i};
             void* staged_data = staging_get_memory(coordinates, staging_rank);
             if (staged_data != NULL)
             {
@@ -178,20 +178,20 @@ void staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, h
     hsize_t source_array_size[] = {chunked_size[0] * staging_chunk_size, chunked_size[1] * staging_chunk_size};
     hsize_t target_array_size[] = {staging_chunk_size, staging_chunk_size};
 
-    for (size_t j = chunked_start[1]; j < chunked_end[1]; ++j)
+    for (size_t j = chunked_start[0]; j < chunked_end[0]; ++j)
     {
-        for (size_t i = chunked_start[0]; i < chunked_end[0]; ++i)
+        for (size_t i = chunked_start[1]; i < chunked_end[1]; ++i)
         {
-            hsize_t coordinates[] = {i, j};
+            hsize_t coordinates[] = {j, i};
             void* staged_data = staging_get_memory(coordinates, staging_rank);
             if (staged_data == NULL)
             {
                 staged_data = staging_allocate_memory(coordinates, staging_sizes, staging_rank, typeSize);
                 for (size_t k = 0; k < staging_chunk_size; k++)
                 {
-                    hsize_t source_coordinates[] =  {i*staging_chunk_size, j*staging_chunk_size + k};
+                    hsize_t source_coordinates[] =  {j*staging_chunk_size + k, i*staging_chunk_size};
                     void* source = intermediate_buffer + staging_get_linear_address(source_coordinates, source_array_size, 2, typeSize);
-                    hsize_t target_coordinates[] = {0, k};
+                    hsize_t target_coordinates[] = {k, 0};
                     void* target = staged_data + staging_get_linear_address(target_coordinates, target_array_size, 2, typeSize);
                     memcpy(target, source, staging_chunk_size * typeSize);
                 }                
