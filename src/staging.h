@@ -139,24 +139,21 @@ void staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id
 
 void staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
 {   
-    hid_t file_space = H5Scopy(file_space_id);
-    hid_t mem_space = H5Scopy(mem_space_id);
-
     hid_t datatype = H5Dget_type(dset_id);
     size_t typeSize = H5Tget_size(datatype);
-    
-    hsize_t dataspace_start[2];
-    hsize_t dataspace_stride[2];
-    hsize_t dataspace_count[2];
-    hsize_t dataspace_block[2];
-    H5Sget_regular_hyperslab(file_space, dataspace_start, dataspace_stride, dataspace_count, dataspace_block);
 
-    void* intermediate_buffer = malloc(dataspace_count[0] * dataspace_count[1] * typeSize);
+    hid_t file_space = H5Scopy(file_space_id);
 
     hsize_t chunked_start[2];
     hsize_t chunked_end[2];
     hsize_t chunked_size[2];
     staging_get_chunked_dimensions(file_space, chunked_start, chunked_end, chunked_size);
+    
+    hsize_t intermediate_space_offset[] = { 0, 0 };
+    hsize_t intermediate_space_size[] = { chunked_size[0] * staging_chunk_size, chunked_size[1] * staging_chunk_size };
+    hid_t intermediate_space = H5Screate_simple(2, intermediate_space_size, NULL);
+
+    void* intermediate_buffer = malloc(intermediate_space_size[0] * intermediate_space_size[1] * typeSize);
 
     for (size_t j = chunked_start[0]; j < chunked_end[0]; ++j)
     {
@@ -164,16 +161,23 @@ void staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, h
         {
             hsize_t coordinates[] = {j, i};
             void* staged_data = staging_get_memory(coordinates, staging_rank);
-            if (staged_data != NULL)
+
+            hsize_t offset[] = {j * staging_chunk_size, i * staging_chunk_size};
+            hsize_t size[] = {staging_chunk_size, staging_chunk_size};
+            if (staged_data == NULL)
             {
-                hsize_t offset[] = {j * staging_chunk_size, i * staging_chunk_size};
-                hsize_t size[] = {staging_chunk_size, staging_chunk_size};
-                H5Sselect_hyperslab(file_space, H5S_SELECT_NOTB, offset, NULL, size, NULL);
+                H5Sselect_hyperslab(file_space, H5S_SELECT_OR, offset, NULL, size, NULL);
+                H5Sselect_hyperslab(intermediate_space, H5S_SELECT_OR, offset, NULL, size, NULL);
             }
+            else
+            {                
+                H5Sselect_hyperslab(file_space, H5S_SELECT_NOTB, offset, NULL, size, NULL);
+                H5Sselect_hyperslab(intermediate_space, H5S_SELECT_NOTB, offset, NULL, size, NULL);
+            }            
         }
     }
 
-    H5D__read_api_common(1, &dset_id, &mem_type_id, &mem_space, &file_space, dxpl_id, &intermediate_buffer, NULL, NULL);       
+    H5D__read_api_common(1, &dset_id, &mem_type_id, &intermediate_space, &file_space, dxpl_id, &intermediate_buffer, NULL, NULL);       
     
     hsize_t source_array_size[] = {chunked_size[0] * staging_chunk_size, chunked_size[1] * staging_chunk_size};
     hsize_t target_array_size[] = {staging_chunk_size, staging_chunk_size};
