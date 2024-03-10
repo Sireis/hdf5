@@ -294,7 +294,7 @@ void* staging_allocate_memory(hsize_t* coordinates, hsize_t* array_dimensions, h
         }
         else if (staging_cache_shape == LINE)
         {
-            size = array_dimensions[1] * typeSize;
+            size = array_dimensions[0] * typeSize;
         }
         
         chunk = malloc(size);    
