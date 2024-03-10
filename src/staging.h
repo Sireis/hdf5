@@ -218,8 +218,8 @@ void staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_id, hid_
     hsize_t file_space_size[2];
     H5Sget_simple_extent_dims(file_space_id, file_space_size, NULL);
 
-    hsize_t start_line = file_space_start[1];
-    hsize_t end_line = file_space_start[1] + file_space_count[1];
+    hsize_t start_line = file_space_start[0];
+    hsize_t end_line = file_space_start[0] + file_space_count[0];
 
     
     hsize_t cache_space_offset[] = { 0, 0 };
