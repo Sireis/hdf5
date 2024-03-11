@@ -155,24 +155,25 @@ void staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, h
 
     void* intermediate_buffer = malloc(intermediate_space_size[0] * intermediate_space_size[1] * typeSize);
 
-    for (size_t j = chunked_start[0]; j < chunked_end[0]; ++j)
+    for (size_t j = 0; j < chunked_size[0]; ++j)
     {
-        for (size_t i = chunked_start[1]; i < chunked_end[1]; ++i)
+        for (size_t i = 0; i < chunked_size[1]; ++i)
         {
-            hsize_t coordinates[] = {j, i};
-            void* staged_data = staging_get_memory(coordinates, staging_rank);
-
-            hsize_t offset[] = {j * staging_chunk_size, i * staging_chunk_size};
+            hsize_t chunked_index[] = {chunked_start[0] + j, chunked_start[1] + i};
+            void* staged_data = staging_get_memory(chunked_index, staging_rank);
+            
+            hsize_t source_offset[] = {chunked_index[0] * staging_chunk_size, chunked_index[1] * staging_chunk_size};
+            hsize_t intermediate_offset[] = {j * staging_chunk_size, i * staging_chunk_size};
             hsize_t size[] = {staging_chunk_size, staging_chunk_size};
             if (staged_data == NULL)
             {
-                H5Sselect_hyperslab(file_space, H5S_SELECT_OR, offset, NULL, size, NULL);
-                H5Sselect_hyperslab(intermediate_space, H5S_SELECT_OR, offset, NULL, size, NULL);
+                H5Sselect_hyperslab(file_space, H5S_SELECT_OR, source_offset, NULL, size, NULL);
+                H5Sselect_hyperslab(intermediate_space, H5S_SELECT_OR, intermediate_offset, NULL, size, NULL);
             }
             else
             {                
-                H5Sselect_hyperslab(file_space, H5S_SELECT_NOTB, offset, NULL, size, NULL);
-                H5Sselect_hyperslab(intermediate_space, H5S_SELECT_NOTB, offset, NULL, size, NULL);
+                H5Sselect_hyperslab(file_space, H5S_SELECT_NOTB, source_offset, NULL, size, NULL);
+                H5Sselect_hyperslab(intermediate_space, H5S_SELECT_NOTB, intermediate_offset, NULL, size, NULL);
             }            
         }
     }
@@ -182,15 +183,15 @@ void staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, h
     hsize_t source_array_size[] = {chunked_size[0] * staging_chunk_size, chunked_size[1] * staging_chunk_size};
     hsize_t target_array_size[] = {staging_chunk_size, staging_chunk_size};
 
-    for (size_t j = chunked_start[0]; j < chunked_end[0]; ++j)
+    for (size_t j = 0; j < chunked_size[0]; ++j)
     {
-        for (size_t i = chunked_start[1]; i < chunked_end[1]; ++i)
+        for (size_t i = 0; i < chunked_size[1]; ++i)
         {
-            hsize_t coordinates[] = {j, i};
-            void* staged_data = staging_get_memory(coordinates, staging_rank);
+            hsize_t chunked_index[] = {chunked_start[0] + j, chunked_start[1] + i};
+            void* staged_data = staging_get_memory(chunked_index, staging_rank);
             if (staged_data == NULL)
             {
-                staged_data = staging_allocate_memory(coordinates, staging_sizes, staging_rank, typeSize);
+                staged_data = staging_allocate_memory(chunked_index, staging_sizes, staging_rank, typeSize);
                 for (size_t k = 0; k < staging_chunk_size; k++)
                 {
                     hsize_t source_coordinates[] =  {j*staging_chunk_size + k, i*staging_chunk_size};
