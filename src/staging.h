@@ -37,7 +37,7 @@ void staging_init(hid_t dataset)
     char* chunk_size = getenv("STAGING_CHUNK_SIZE");
     if (chunk_size != NULL)
     {
-        staging_chunk_size = atoi(chunk_size);
+        staging_chunk_size = atoll(chunk_size);
     }    
     
     char* cache_limit = getenv("STAGING_CACHE_LIMIT");
