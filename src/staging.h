@@ -45,7 +45,7 @@ void staging_init(hid_t dataset)
     char* cache_limit = getenv("STAGING_CACHE_LIMIT");
     if (cache_limit != NULL)
     {
-        staging_cache_limit = atoi(cache_limit);
+        staging_cache_limit = atoll(cache_limit);
     }    
 
     char* eviction_strategy = getenv("STAGING_EVICTION_STRATEGY");
