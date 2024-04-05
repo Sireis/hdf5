@@ -102,6 +102,10 @@ void staging_deinit()
 
 herr_t staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
 {                    
+    herr_t ret_value = SUCCEED; /* required for macro instrumentation */
+    
+    FUNC_ENTER_PACKAGE
+
     hid_t datatype = H5Dget_type(dset_id);
     size_t typeSize = H5Tget_size(datatype);
     
@@ -132,17 +136,22 @@ herr_t staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_
                 hid_t file_space = H5Scopy(file_space_id);
                 H5Sselect_hyperslab(file_space, H5S_SELECT_SET, offset, NULL, mem_space_size, NULL);
 
-                herr_t error = H5D__read_api_common(1, &dset_id, &mem_type_id, &mem_space, &file_space, dxpl_id, &staged_data, NULL, NULL);
-                if (error < 0) return error;                
+                if (H5D__read_api_common(1, &dset_id, &mem_type_id, &mem_space, &file_space, dxpl_id, &staged_data, NULL, NULL) < 0)
+                    HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "failed to read into intermediate buffer")
             }
         }
     }    
 
-    return SUCCEED;
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
 }
 
 herr_t staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
 {   
+    herr_t ret_value = SUCCEED; /* required for macro instrumentation */
+    
+    FUNC_ENTER_PACKAGE
+
     hid_t datatype = H5Dget_type(dset_id);
     size_t typeSize = H5Tget_size(datatype);
 
@@ -182,8 +191,8 @@ herr_t staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id,
         }
     }
 
-    herr_t error = H5D__read_api_common(1, &dset_id, &mem_type_id, &intermediate_space, &file_space, dxpl_id, &intermediate_buffer, NULL, NULL);       
-    if (error < 0) return error;
+    if (H5D__read_api_common(1, &dset_id, &mem_type_id, &intermediate_space, &file_space, dxpl_id, &intermediate_buffer, NULL, NULL) < 0)
+        HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "failed to read into intermediate buffer")
     
     hsize_t source_array_size[] = {chunked_size[0] * staging_chunk_size, chunked_size[1] * staging_chunk_size};
     hsize_t target_array_size[] = {staging_chunk_size, staging_chunk_size};
@@ -209,8 +218,9 @@ herr_t staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id,
         }
     }
 
+done:
     free(intermediate_buffer);
-    return SUCCEED;
+    FUNC_LEAVE_NOAPI(ret_value)
 }
 
 herr_t H5D__staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
