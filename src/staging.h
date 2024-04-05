@@ -8,7 +8,7 @@ void staging_deinit();
 
 static herr_t staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
 static herr_t staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
-static herr_t staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
+static herr_t H5D__staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
 static void staging_get_chunked_dimensions(hid_t dataspace, hsize_t* start, hsize_t* end, hsize_t* size);
 static hsize_t staging_get_linear_address(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank, uint8_t typeSize);
 static hsize_t staging_get_linear_index(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank);
@@ -213,8 +213,13 @@ herr_t staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id,
     return SUCCEED;
 }
 
-herr_t staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
+herr_t H5D__staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
 {
+    herr_t ret_value = SUCCEED; /* required for macro instrumentation */
+    
+    FUNC_ENTER_PACKAGE
+
+
     hid_t datatype = H5Dget_type(dset_id);
     size_t type_size = H5Tget_size(datatype);
 
@@ -246,10 +251,13 @@ herr_t staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_id, hi
             hsize_t size[] = {1, file_space_size[1]};
             H5Sselect_hyperslab(file_space, H5S_SELECT_SET, offset, NULL, size, NULL);
 
-            herr_t error = H5D__read_api_common(1, &dset_id, &mem_type_id, &cache_space, &file_space, dxpl_id, &staged_data, NULL, NULL);   
-            if (error < 0) return error;
+            if (H5D__read_api_common(1, &dset_id, &mem_type_id, &cache_space, &file_space, dxpl_id, &staged_data, NULL, NULL) < 0)
+                HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "read failed for staging")
         }
     }
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
 }
 
 void staging_get_chunked_dimensions(hid_t dataspace, hsize_t* start, hsize_t* end, hsize_t* size)
