@@ -1090,21 +1090,21 @@ H5Dread(hid_t dset_id, hid_t mem_type_id, hid_t mem_space_id, hid_t file_space_i
         {
 
 #ifdef STAGING_MEMORY_OPTIMIZED
-            if (staging_read_into_cache_memory_optimized(dset_id, file_space_id, dxpl_id, mem_type_id) < 0)
+            if (H5D__staging_read_into_cache_memory_optimized(dset_id, file_space_id, dxpl_id, mem_type_id) < 0)
                 HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data into staging memory")
 #endif
 #ifdef STAGING_DISK_OPTIMIZED
-            if (staging_read_into_cache_disk_optimized(dset_id, mem_space_id, file_space_id, dxpl_id, mem_type_id) < 0)
+            if (H5D__staging_read_into_cache_disk_optimized(dset_id, mem_space_id, file_space_id, dxpl_id, mem_type_id) < 0)
                 HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data into staging memory")
 #endif
-            if (staging_read_from_cache(buf, type_size, file_space_id, mem_space_id) < 0)
+            if (H5D__staging_read_from_cache(buf, type_size, file_space_id, mem_space_id) < 0)
                 HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data from staging memory")
         }
         else if (staging_cache_shape == LINE)
         {
             if (H5D__staging_read_into_cache_line_format(dset_id, mem_space_id, file_space_id, dxpl_id, mem_type_id) < 0)
                 HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data into staging memory")
-            if (staging_read_from_cache_line_format(buf, type_size, file_space_id, mem_space_id) < 0)
+            if (H5D__staging_read_from_cache_line_format(buf, type_size, file_space_id, mem_space_id) < 0)
                 HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data from staging memory")
         }
 

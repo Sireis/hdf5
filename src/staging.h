@@ -6,8 +6,8 @@
 void staging_init(hid_t dataset);
 void staging_deinit();
 
-static herr_t staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
-static herr_t staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
+static herr_t H5D__staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
+static herr_t H5D__staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
 static herr_t H5D__staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
 static void staging_get_chunked_dimensions(hid_t dataspace, hsize_t* start, hsize_t* end, hsize_t* size);
 static hsize_t staging_get_linear_address(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank, uint8_t typeSize);
@@ -15,8 +15,8 @@ static hsize_t staging_get_linear_index(hsize_t* coordinates, hsize_t* array_dim
 static hsize_t staging_ceiled_division(hsize_t dividend, hsize_t divisor);
 static void* staging_allocate_memory(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank, uint8_t typeSize);
 static void* staging_get_memory(hsize_t* coordinates, hsize_t rank);
-static herr_t staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id);
-static herr_t staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id);
+static herr_t H5D__staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id);
+static herr_t H5D__staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id);
 static hsize_t min(hsize_t a, hsize_t b);
 
 typedef enum {LRU, FIFO} eviction_strategy_t;
@@ -100,7 +100,7 @@ void staging_deinit()
     arrayQueue_deinit(&staging_chunks);
 }
 
-herr_t staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
+herr_t H5D__staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
 {                    
     herr_t ret_value = SUCCEED; /* required for macro instrumentation */
     
@@ -146,7 +146,7 @@ done:
     FUNC_LEAVE_NOAPI(ret_value)
 }
 
-herr_t staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
+herr_t H5D__staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
 {   
     herr_t ret_value = SUCCEED; /* required for macro instrumentation */
     
@@ -353,8 +353,12 @@ void* staging_get_memory(hsize_t coordinates[], hsize_t rank)
     return node->memory;
 }
 
-herr_t staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id)
-{
+herr_t H5D__staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id)
+{    
+    herr_t ret_value = SUCCEED; /* required for macro instrumentation */
+    
+    FUNC_ENTER_PACKAGE
+
     volatile hsize_t source_start[2];
     volatile hsize_t source_stride[2];
     volatile hsize_t source_count[2];
@@ -450,11 +454,16 @@ herr_t staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_
         target_coordinates[0] += row_count;
     }    
 
-    return SUCCEED;
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
 }
 
-herr_t staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id)
-{        
+herr_t H5D__staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id)
+{   
+    herr_t ret_value = SUCCEED; /* required for macro instrumentation */
+    
+    FUNC_ENTER_PACKAGE
+
     //hid_t dataset_space = H5Dget_space(dset_id);
     hsize_t file_space_size[2];
     H5Sget_simple_extent_dims(file_space_id, file_space_size, NULL);
@@ -489,7 +498,8 @@ herr_t staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t
         memcpy(target, source, target_array_count[1] * typeSize);
     }
 
-    return SUCCEED;
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
 }
 
 hsize_t staging_get_linear_address(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank, uint8_t typeSize)
