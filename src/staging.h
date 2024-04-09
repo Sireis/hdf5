@@ -6,17 +6,21 @@
 void staging_init(hid_t dataset);
 void staging_deinit();
 
+static herr_t H5D__staging_read_into_cache(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
+static herr_t H5D__staging_read_from_cache(void* buffer, uint8_t type_size, hid_t file_space_id, hid_t mem_space_id);
+
 static herr_t H5D__staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
 static herr_t H5D__staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
 static herr_t H5D__staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id);
+static herr_t H5D__staging_read_from_cache_square_format(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id);
+static herr_t H5D__staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id);
+
 static void staging_get_chunked_dimensions(hid_t dataspace, hsize_t* start, hsize_t* end, hsize_t* size);
 static hsize_t staging_get_linear_address(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank, uint8_t typeSize);
 static hsize_t staging_get_linear_index(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank);
 static hsize_t staging_ceiled_division(hsize_t dividend, hsize_t divisor);
 static void* staging_allocate_memory(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank, uint8_t typeSize);
 static void* staging_get_memory(hsize_t* coordinates, hsize_t rank);
-static herr_t H5D__staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id);
-static herr_t H5D__staging_read_from_cache_line_format(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id);
 static hsize_t min(hsize_t a, hsize_t b);
 
 typedef enum {LRU, FIFO} eviction_strategy_t;
@@ -30,6 +34,7 @@ static hsize_t staging_current_occupation = 0;
 static hsize_t staging_cache_limit = 4ULL*1024*1024*1024;
 static eviction_strategy_t staging_eviction_strategy = LRU;
 static cache_shape_t staging_cache_shape = SQUARE;
+static bool staging_is_buffered_read_enabled = false;
 
 void staging_init(hid_t dataset)
 {    
@@ -76,6 +81,15 @@ void staging_init(hid_t dataset)
         }        
     }
 
+    char* is_buffered_read_enabled = getenv("STAGING_BUFFERED_READ");
+    if (is_buffered_read_enabled != NULL)
+    {
+        if (strncmp(is_buffered_read_enabled, "0", 4) != 0)
+        {
+            staging_is_buffered_read_enabled = true;
+        }
+    }
+
     if (staging_rank == 2)
     {
         hsize_t sizes[2];
@@ -98,6 +112,62 @@ void staging_init(hid_t dataset)
 void staging_deinit()
 {
     arrayQueue_deinit(&staging_chunks);
+}
+
+herr_t H5D__staging_read_into_cache(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
+{
+    herr_t ret_value = SUCCEED; /* required for macro instrumentation */
+
+    FUNC_ENTER_PACKAGE
+
+    if (staging_rank == 2)
+    {
+        if (staging_cache_shape == SQUARE)
+        {
+            if (staging_is_buffered_read_enabled)
+            {
+                if (H5D__staging_read_into_cache_disk_optimized(dset_id, mem_space_id, file_space_id, dxpl_id, mem_type_id) < 0)
+                    HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data into staging memory (buffered read)")
+            }
+            else
+            {
+                if (H5D__staging_read_into_cache_memory_optimized(dset_id, file_space_id, dxpl_id, mem_type_id) < 0)
+                    HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data into staging memory (unbuffered read)")
+            }
+        }
+        else if (staging_cache_shape == LINE)
+        {
+            if (H5D__staging_read_into_cache_line_format(dset_id, mem_space_id, file_space_id, dxpl_id, mem_type_id) < 0)
+                HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data into staging memory (line format)")
+        }      
+    }
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
+}
+
+herr_t H5D__staging_read_from_cache(void* buffer, uint8_t type_size, hid_t file_space_id, hid_t mem_space_id)
+{
+    herr_t ret_value = SUCCEED; /* required for macro instrumentation */
+
+    FUNC_ENTER_PACKAGE
+
+    if (staging_rank == 2)
+    {
+        if (staging_cache_shape == SQUARE)
+        {
+            if (H5D__staging_read_from_cache_square_format(buffer, type_size, file_space_id, mem_space_id) < 0)
+                HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data from staging memory")
+        }
+        else if (staging_cache_shape == LINE)
+        {
+            if (H5D__staging_read_from_cache_line_format(buffer, type_size, file_space_id, mem_space_id) < 0)
+                HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data from staging memory")
+        }
+    }
+    
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
 }
 
 herr_t H5D__staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
@@ -353,7 +423,7 @@ void* staging_get_memory(hsize_t coordinates[], hsize_t rank)
     return node->memory;
 }
 
-herr_t H5D__staging_read_from_cache(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id)
+herr_t H5D__staging_read_from_cache_square_format(void* buffer, uint8_t typeSize, hid_t file_space_id, hid_t mem_space_id)
 {    
     herr_t ret_value = SUCCEED; /* required for macro instrumentation */
     
