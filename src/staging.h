@@ -26,31 +26,33 @@ static hsize_t min(hsize_t a, hsize_t b);
 typedef enum {LRU, FIFO} eviction_strategy_t;
 typedef enum {SQUARE, LINE} cache_shape_t;
 
-static ArrayQueue staging_chunks;
-static hsize_t staging_sizes[10] = { 0 };
-static hsize_t staging_rank = 0;
-static int staging_chunk_size = 1024;
-static hsize_t staging_current_occupation = 0;
-static hsize_t staging_cache_limit = 4ULL*1024*1024*1024;
-static eviction_strategy_t staging_eviction_strategy = LRU;
-static cache_shape_t staging_cache_shape = SQUARE;
-static bool staging_is_buffered_read_enabled = false;
+typedef struct {
+    ArrayQueue chunks;
+    hsize_t sizes[10];
+    hsize_t rank;
+    int chunk_size;
+    hsize_t current_occupation;
+    hsize_t cache_limit;
+    eviction_strategy_t eviction_strategy;
+    cache_shape_t cache_shape;
+    bool is_buffered_read_enabled;
+} staging_data_t;
 
 void staging_init(hid_t dataset)
 {    
     hid_t dataspace = H5Dget_space(dataset);
-    staging_rank = H5Sget_simple_extent_ndims(dataspace);
+    staging_data.rank = H5Sget_simple_extent_ndims(dataspace);
 
     char* chunk_size = getenv("STAGING_CHUNK_SIZE");
     if (chunk_size != NULL)
     {
-        staging_chunk_size = atoll(chunk_size);
+        staging_data.chunk_size = atoll(chunk_size);
     }    
     
     char* cache_limit = getenv("STAGING_CACHE_LIMIT");
     if (cache_limit != NULL)
     {
-        staging_cache_limit = atoll(cache_limit);
+        staging_data.cache_limit = atoll(cache_limit);
     }    
 
     char* eviction_strategy = getenv("STAGING_EVICTION_STRATEGY");
@@ -58,12 +60,12 @@ void staging_init(hid_t dataset)
     {
         if (strncmp(eviction_strategy, "LRU", 3) == 0)
         {            
-            staging_eviction_strategy = LRU;
+            staging_data.eviction_strategy = LRU;
         }
         
         if (strncmp(eviction_strategy, "FIFO", 4) == 0)
         {            
-            staging_eviction_strategy = FIFO;
+            staging_data.eviction_strategy = FIFO;
         }        
     }
     
@@ -72,12 +74,12 @@ void staging_init(hid_t dataset)
     {
         if (strncmp(cache_shape, "SQUARE", 6) == 0)
         {            
-            staging_cache_shape = SQUARE;
+            staging_data.cache_shape = SQUARE;
         }
         
         if (strncmp(cache_shape, "LINE", 3) == 0)
         {            
-            staging_cache_shape = LINE;
+            staging_data.cache_shape = LINE;
         }        
     }
 
@@ -86,32 +88,32 @@ void staging_init(hid_t dataset)
     {
         if (strncmp(is_buffered_read_enabled, "0", 4) != 0)
         {
-            staging_is_buffered_read_enabled = true;
+            staging_data.is_buffered_read_enabled = true;
         }
     }
 
-    if (staging_rank == 2)
+    if (staging_data.rank == 2)
     {
         hsize_t sizes[2];
         H5Sget_simple_extent_dims(dataspace, sizes, NULL);  
-        if (staging_cache_shape == SQUARE)
+        if (staging_data.cache_shape == SQUARE)
         {
-            staging_sizes[0] = staging_ceiled_division(sizes[0], staging_chunk_size);
-            staging_sizes[1] = staging_ceiled_division(sizes[1], staging_chunk_size);
-            arrayQueue_init(&staging_chunks, staging_sizes[0] * staging_sizes[1]);
+            staging_data.sizes[0] = staging_ceiled_division(sizes[0], staging_data.chunk_size);
+            staging_data.sizes[1] = staging_ceiled_division(sizes[1], staging_data.chunk_size);
+            arrayQueue_init(&staging_data.chunks, staging_data.sizes[0] * staging_data.sizes[1]);
         }
         else
         {
-            staging_sizes[0] = sizes[1];
-            arrayQueue_init(&staging_chunks, staging_sizes[0]);
+            staging_data.sizes[0] = sizes[1];
+            arrayQueue_init(&staging_data.chunks, staging_data.sizes[0]);
         }        
-        staging_current_occupation = 0;
+        staging_data.current_occupation = 0;
     }
 }
 
 void staging_deinit()
 {
-    arrayQueue_deinit(&staging_chunks);
+    arrayQueue_deinit(&staging_data.chunks);
 }
 
 herr_t H5D__staging_read_into_cache(hid_t dset_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, hid_t mem_type_id)
@@ -120,11 +122,11 @@ herr_t H5D__staging_read_into_cache(hid_t dset_id, hid_t mem_space_id, hid_t fil
 
     FUNC_ENTER_PACKAGE
 
-    if (staging_rank == 2)
+    if (staging_data.rank == 2)
     {
-        if (staging_cache_shape == SQUARE)
+        if (staging_data.cache_shape == SQUARE)
         {
-            if (staging_is_buffered_read_enabled)
+            if (staging_data.is_buffered_read_enabled)
             {
                 if (H5D__staging_read_into_cache_disk_optimized(dset_id, mem_space_id, file_space_id, dxpl_id, mem_type_id) < 0)
                     HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data into staging memory (buffered read)")
@@ -135,7 +137,7 @@ herr_t H5D__staging_read_into_cache(hid_t dset_id, hid_t mem_space_id, hid_t fil
                     HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data into staging memory (unbuffered read)")
             }
         }
-        else if (staging_cache_shape == LINE)
+        else if (staging_data.cache_shape == LINE)
         {
             if (H5D__staging_read_into_cache_line_format(dset_id, mem_space_id, file_space_id, dxpl_id, mem_type_id) < 0)
                 HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data into staging memory (line format)")
@@ -152,14 +154,14 @@ herr_t H5D__staging_read_from_cache(void* buffer, uint8_t type_size, hid_t file_
 
     FUNC_ENTER_PACKAGE
 
-    if (staging_rank == 2)
+    if (staging_data.rank == 2)
     {
-        if (staging_cache_shape == SQUARE)
+        if (staging_data.cache_shape == SQUARE)
         {
             if (H5D__staging_read_from_cache_square_format(buffer, type_size, file_space_id, mem_space_id) < 0)
                 HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data from staging memory")
         }
-        else if (staging_cache_shape == LINE)
+        else if (staging_data.cache_shape == LINE)
         {
             if (H5D__staging_read_from_cache_line_format(buffer, type_size, file_space_id, mem_space_id) < 0)
                 HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "can't read data from staging memory")
@@ -183,7 +185,7 @@ herr_t H5D__staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_s
     H5Sget_simple_extent_dims(file_space_id, file_space_size, NULL);
 
     hsize_t mem_space_offset[] = { 0, 0 };
-    hsize_t mem_space_dimensions[] = { staging_chunk_size, staging_chunk_size };
+    hsize_t mem_space_dimensions[] = { staging_data.chunk_size, staging_data.chunk_size };
     hsize_t mem_space_size[] = { min(mem_space_dimensions[0], file_space_size[0]), min(mem_space_dimensions[1], file_space_size[1]) };
     hid_t mem_space = H5Screate_simple(2, mem_space_dimensions, NULL);
     H5Sselect_hyperslab(mem_space, H5S_SELECT_SET, mem_space_offset, NULL, mem_space_size, NULL);
@@ -198,11 +200,11 @@ herr_t H5D__staging_read_into_cache_memory_optimized(hid_t dset_id, hid_t file_s
         for (size_t i = chunked_start[1]; i < chunked_end[1]; ++i)
         {
             hsize_t coordinates[] = {j, i};
-            void* staged_data = staging_get_memory(coordinates, staging_rank);
+            void* staged_data = staging_get_memory(coordinates, staging_data.rank);
             if (staged_data == NULL)
             {
-                staged_data = staging_allocate_memory(coordinates, staging_sizes, staging_rank, typeSize);
-                hsize_t offset[] = { j*staging_chunk_size, i*staging_chunk_size };
+                staged_data = staging_allocate_memory(coordinates, staging_data.sizes, staging_data.rank, typeSize);
+                hsize_t offset[] = { j*staging_data.chunk_size, i*staging_data.chunk_size };
                 hid_t file_space = H5Scopy(file_space_id);
                 H5Sselect_hyperslab(file_space, H5S_SELECT_SET, offset, NULL, mem_space_size, NULL);
 
@@ -233,7 +235,7 @@ herr_t H5D__staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_spac
     staging_get_chunked_dimensions(file_space, chunked_start, chunked_end, chunked_size);
     
     hsize_t intermediate_space_offset[] = { 0, 0 };
-    hsize_t intermediate_space_size[] = { chunked_size[0] * staging_chunk_size, chunked_size[1] * staging_chunk_size };
+    hsize_t intermediate_space_size[] = { chunked_size[0] * staging_data.chunk_size, chunked_size[1] * staging_data.chunk_size };
     hid_t intermediate_space = H5Screate_simple(2, intermediate_space_size, NULL);
 
     void* intermediate_buffer = malloc(intermediate_space_size[0] * intermediate_space_size[1] * typeSize);
@@ -243,11 +245,11 @@ herr_t H5D__staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_spac
         for (size_t i = 0; i < chunked_size[1]; ++i)
         {
             hsize_t chunked_index[] = {chunked_start[0] + j, chunked_start[1] + i};
-            void* staged_data = staging_get_memory(chunked_index, staging_rank);
+            void* staged_data = staging_get_memory(chunked_index, staging_data.rank);
             
-            hsize_t source_offset[] = {chunked_index[0] * staging_chunk_size, chunked_index[1] * staging_chunk_size};
-            hsize_t intermediate_offset[] = {j * staging_chunk_size, i * staging_chunk_size};
-            hsize_t size[] = {staging_chunk_size, staging_chunk_size};
+            hsize_t source_offset[] = {chunked_index[0] * staging_data.chunk_size, chunked_index[1] * staging_data.chunk_size};
+            hsize_t intermediate_offset[] = {j * staging_data.chunk_size, i * staging_data.chunk_size};
+            hsize_t size[] = {staging_data.chunk_size, staging_data.chunk_size};
             if (staged_data == NULL)
             {
                 H5Sselect_hyperslab(file_space, H5S_SELECT_OR, source_offset, NULL, size, NULL);
@@ -264,25 +266,25 @@ herr_t H5D__staging_read_into_cache_disk_optimized(hid_t dset_id, hid_t mem_spac
     if (H5D__read_api_common(1, &dset_id, &mem_type_id, &intermediate_space, &file_space, dxpl_id, &intermediate_buffer, NULL, NULL) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "failed to read into intermediate buffer")
     
-    hsize_t source_array_size[] = {chunked_size[0] * staging_chunk_size, chunked_size[1] * staging_chunk_size};
-    hsize_t target_array_size[] = {staging_chunk_size, staging_chunk_size};
+    hsize_t source_array_size[] = {chunked_size[0] * staging_data.chunk_size, chunked_size[1] * staging_data.chunk_size};
+    hsize_t target_array_size[] = {staging_data.chunk_size, staging_data.chunk_size};
 
     for (size_t j = 0; j < chunked_size[0]; ++j)
     {
         for (size_t i = 0; i < chunked_size[1]; ++i)
         {
             hsize_t chunked_index[] = {chunked_start[0] + j, chunked_start[1] + i};
-            void* staged_data = staging_get_memory(chunked_index, staging_rank);
+            void* staged_data = staging_get_memory(chunked_index, staging_data.rank);
             if (staged_data == NULL)
             {
-                staged_data = staging_allocate_memory(chunked_index, staging_sizes, staging_rank, typeSize);
-                for (size_t k = 0; k < staging_chunk_size; k++)
+                staged_data = staging_allocate_memory(chunked_index, staging_data.sizes, staging_data.rank, typeSize);
+                for (size_t k = 0; k < staging_data.chunk_size; k++)
                 {
-                    hsize_t source_coordinates[] =  {j*staging_chunk_size + k, i*staging_chunk_size};
+                    hsize_t source_coordinates[] =  {j*staging_data.chunk_size + k, i*staging_data.chunk_size};
                     void* source = intermediate_buffer + staging_get_linear_address(source_coordinates, source_array_size, 2, typeSize);
                     hsize_t target_coordinates[] = {k, 0};
                     void* target = staged_data + staging_get_linear_address(target_coordinates, target_array_size, 2, typeSize);
-                    memcpy(target, source, staging_chunk_size * typeSize);
+                    memcpy(target, source, staging_data.chunk_size * typeSize);
                 }                
             }
         }
@@ -325,7 +327,7 @@ herr_t H5D__staging_read_into_cache_line_format(hid_t dset_id, hid_t mem_space_i
         void* staged_data = staging_get_memory(coordinates, 1);
         if (staged_data == NULL)
         {
-            staged_data = staging_allocate_memory(coordinates, staging_sizes, 1, type_size);
+            staged_data = staging_allocate_memory(coordinates, staging_data.sizes, 1, type_size);
             hsize_t offset[] = { i, 0 };
             hid_t file_space = H5Scopy(file_space_id);
             hsize_t size[] = {1, file_space_size[1]};
@@ -348,11 +350,11 @@ void staging_get_chunked_dimensions(hid_t dataspace, hsize_t* start, hsize_t* en
     hsize_t dataspace_block[2];
     H5Sget_regular_hyperslab(dataspace, dataspace_start, dataspace_stride, dataspace_count, dataspace_block);
 
-    start[0] = (dataspace_start[0] / staging_chunk_size);
-    start[1] = (dataspace_start[1] / staging_chunk_size);
+    start[0] = (dataspace_start[0] / staging_data.chunk_size);
+    start[1] = (dataspace_start[1] / staging_data.chunk_size);
     
-    end[0] = staging_ceiled_division(dataspace_start[0] + dataspace_count[0], staging_chunk_size);
-    end[1] = staging_ceiled_division(dataspace_start[1] + dataspace_count[1], staging_chunk_size);
+    end[0] = staging_ceiled_division(dataspace_start[0] + dataspace_count[0], staging_data.chunk_size);
+    end[1] = staging_ceiled_division(dataspace_start[1] + dataspace_count[1], staging_data.chunk_size);
     
     size[0] = end[0] - start[0];
     size[1] = end[1] - start[1];
@@ -376,33 +378,33 @@ hsize_t staging_ceiled_division(hsize_t dividend, hsize_t divisor)
 void* staging_allocate_memory(hsize_t* coordinates, hsize_t* array_dimensions, hsize_t rank, uint8_t typeSize)
 {
     hsize_t index = staging_get_linear_index(coordinates, array_dimensions, rank);
-    Node* node = arrayQueue_get_by_index(&staging_chunks, index);
-    arrayQueue_move_to_front(&staging_chunks, node);
+    Node* node = arrayQueue_get_by_index(&staging_data.chunks, index);
+    arrayQueue_move_to_front(&staging_data.chunks, node);
     void* chunk;
     
-    if (staging_current_occupation < staging_cache_limit)
+    if (staging_data.current_occupation < staging_data.cache_limit)
     {
         hsize_t size;
-        if (staging_cache_shape == SQUARE)
+        if (staging_data.cache_shape == SQUARE)
         {
-            size = staging_chunk_size * staging_chunk_size * typeSize;
+            size = staging_data.chunk_size * staging_data.chunk_size * typeSize;
         }
-        else if (staging_cache_shape == LINE)
+        else if (staging_data.cache_shape == LINE)
         {
             size = array_dimensions[0] * typeSize;
         }
         
         chunk = malloc(size);    
-        staging_current_occupation += size;
+        staging_data.current_occupation += size;
     }
     else
     {
-        Node* tail = arrayQueue_get_tail(&staging_chunks);
+        Node* tail = arrayQueue_get_tail(&staging_data.chunks);
         chunk = tail->memory;
         tail->memory = NULL;
         if (tail != node)
         {            
-            arrayQueue_pop_tail(&staging_chunks);
+            arrayQueue_pop_tail(&staging_data.chunks);
         }        
     }
     node->memory = chunk;
@@ -412,12 +414,12 @@ void* staging_allocate_memory(hsize_t* coordinates, hsize_t* array_dimensions, h
 
 void* staging_get_memory(hsize_t coordinates[], hsize_t rank)
 {
-    hsize_t index = staging_get_linear_index(coordinates, staging_sizes, rank);
-    Node* node = arrayQueue_get_by_index(&staging_chunks, index);  
+    hsize_t index = staging_get_linear_index(coordinates, staging_data.sizes, rank);
+    Node* node = arrayQueue_get_by_index(&staging_data.chunks, index);  
 
-    if (staging_eviction_strategy == LRU)
+    if (staging_data.eviction_strategy == LRU)
     {        
-        arrayQueue_move_to_front(&staging_chunks, node);
+        arrayQueue_move_to_front(&staging_data.chunks, node);
     }
       
     return node->memory;
@@ -444,8 +446,8 @@ herr_t H5D__staging_read_from_cache_square_format(void* buffer, uint8_t typeSize
     staging_get_chunked_dimensions(file_space_id, source_chunked_start, source_chunked_end, source_chunked_size);
 
     hsize_t source_array_size[2];
-    source_array_size[0] = staging_chunk_size;
-    source_array_size[1] = staging_chunk_size;
+    source_array_size[0] = staging_data.chunk_size;
+    source_array_size[1] = staging_data.chunk_size;
     
     hsize_t target_start[2];
     hsize_t target_stride[2];
@@ -472,45 +474,45 @@ herr_t H5D__staging_read_from_cache_square_format(void* buffer, uint8_t typeSize
         target_coordinates[1] = target_start[1]; //?
         
         hsize_t start_row = 0;
-        hsize_t end_row = staging_chunk_size;
-        hsize_t row_count = staging_chunk_size;
+        hsize_t end_row = staging_data.chunk_size;
+        hsize_t row_count = staging_data.chunk_size;
         if (j == source_chunked_start[0])
         {
-            start_row = source_start[0] % staging_chunk_size;
-            row_count = staging_chunk_size - start_row;
+            start_row = source_start[0] % staging_data.chunk_size;
+            row_count = staging_data.chunk_size - start_row;
         }
 
         if (j == source_chunked_end[0] - 1)
         {
-            end_row = source_end[0] % staging_chunk_size;
-            end_row = (end_row != 0) ? end_row : staging_chunk_size;
+            end_row = source_end[0] % staging_data.chunk_size;
+            end_row = (end_row != 0) ? end_row : staging_data.chunk_size;
             row_count = end_row - start_row;
         }    
 
         for (size_t i = source_chunked_start[1]; i < source_chunked_end[1]; ++i)
         {                    
             hsize_t position_in_row = 0;
-            hsize_t row_size = staging_chunk_size;
+            hsize_t row_size = staging_data.chunk_size;
             if (i == source_chunked_start[1])
             {
-                position_in_row = source_start[1] % staging_chunk_size;
-                row_size = staging_chunk_size - position_in_row;
+                position_in_row = source_start[1] % staging_data.chunk_size;
+                row_size = staging_data.chunk_size - position_in_row;
             }
 
             if (i == source_chunked_end[1] - 1)
             {
-                row_size = (source_end[1] - position_in_row) % staging_chunk_size;
-                row_size = (row_size != 0) ? row_size : staging_chunk_size;
+                row_size = (source_end[1] - position_in_row) % staging_data.chunk_size;
+                row_size = (row_size != 0) ? row_size : staging_data.chunk_size;
             }            
 
             for (size_t k = start_row; k < end_row; ++k)
             {
                 hsize_t chunk_index[] = {j, i};
                 hsize_t source_coordinates[] = {k, position_in_row};
-                void* base = staging_get_memory(chunk_index, staging_rank);
+                void* base = staging_get_memory(chunk_index, staging_data.rank);
                 if (base == NULL) continue; // null if cache eviction occurred
-                void* source = base + staging_get_linear_address(source_coordinates, source_array_size, staging_rank, typeSize);
-                void* target = buffer + staging_get_linear_address(target_coordinates, target_array_size, staging_rank, typeSize);
+                void* source = base + staging_get_linear_address(source_coordinates, source_array_size, staging_data.rank, typeSize);
+                void* target = buffer + staging_get_linear_address(target_coordinates, target_array_size, staging_data.rank, typeSize);
 
                 memcpy(target, source, row_size * typeSize);
                 target_coordinates[0] += 1;
