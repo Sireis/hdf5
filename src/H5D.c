@@ -489,11 +489,28 @@ H5Dclose(hid_t dset_id)
     /* Decrement the counter on the dataset.  It will be freed if the count
      * reaches zero.
      */
+#ifndef STAGING
     if (H5I_dec_app_ref_always_close(dset_id) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTDEC, FAIL, "can't decrement count on dataset ID")
 
-#ifdef STAGING
-    staging_on_dataset_close(dset_id);
+#else
+    /* the C-library maintains its own o´bject system, which only frees memory when the ref
+       count reaches zero. Resources must not be freed if ref_count is > 0. For example a cpp object
+       referencing this might currently being destroyed because it is being copied. Then the ref_count
+       is > 0, becasue the newly created object (which will be copied to) still exists and requires 
+       this data.
+    */
+
+    int ref_count = H5I_dec_app_ref_always_close(dset_id);
+
+    if (ref_count < 0)
+    {
+        HGOTO_ERROR(H5E_DATASET, H5E_CANTDEC, FAIL, "can't decrement count on dataset ID")
+    }
+    else if (ref_count == 0)
+    {        
+        staging_on_dataset_close(dset_id);
+    }        
 #endif
 
 done:
