@@ -466,7 +466,10 @@ void* staging_get_memory(staging_data_t* staging_data, hsize_t coordinates[], hs
 
     if (staging_data->eviction_strategy == LRU)
     {        
-        arrayQueue_move_to_front(&staging_data->chunks, node);
+        if (node->memory != NULL)
+        {
+            arrayQueue_move_to_front(&staging_data->chunks, node);
+        }        
     }
       
     return node->memory;
