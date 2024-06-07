@@ -555,18 +555,22 @@ herr_t H5D__staging_read_from_cache_square_format(staging_data_t* staging_data, 
                 row_size = (row_size != 0) ? row_size : staging_data->chunk_size;
             }            
 
+            hsize_t chunk_index[] = {j, i};
+            void* base = staging_get_memory(staging_data, chunk_index, staging_data->rank);
+            if (base == NULL) // null if cache eviction occurred
+            {                
+                target_coordinates[1] += row_size;
+                continue; 
+            }
             for (size_t k = start_row; k < end_row; ++k)
             {
-                hsize_t chunk_index[] = {j, i};
                 hsize_t source_coordinates[] = {k, position_in_row};
-                void* base = staging_get_memory(staging_data, chunk_index, staging_data->rank);
-                if (base == NULL) continue; // null if cache eviction occurred
+                
                 void* source = base + staging_get_linear_address(source_coordinates, source_array_size, staging_data->rank, typeSize);
                 void* target = buffer + staging_get_linear_address(target_coordinates, target_array_size, staging_data->rank, typeSize);
-
+                
                 memcpy(target, source, row_size * typeSize);
                 target_coordinates[0] += 1;
-                //printf("-");
             }
 
             target_coordinates[0] -= row_count;
